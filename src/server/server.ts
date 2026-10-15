@@ -50,6 +50,19 @@ function viewState(): ViewState {
   }
 }
 
+// Writes are FORBIDDEN while the store exists but can't be decrypted: saving an
+// empty/new store would silently destroy every account encrypted with the old key.
+function writableOr409(vs: ViewState): Response | null {
+  if (vs.error)
+    return fail(
+      "the account store exists but can't be decrypted (" +
+        vs.error +
+        ") — refusing to overwrite it. Restore the master key in Plugins → TOTP Vault → Settings, or wipe the store deliberately with: ob-plugin-totp-vault-totp reset --yes",
+      409,
+    );
+  return null;
+}
+
 function accountPublic(a: OtpAccount, now: number) {
   const { code, expiresAt, counter } = accountCode(a, now);
   return {
@@ -110,6 +123,8 @@ Bun.serve({
         if (!uri) return fail("missing uri");
         const vs = viewState();
         if (!vs.configured) return fail("not configured: no master key yet — run 'ob-plugin-totp-vault-totp list' once in a chat", 409);
+        const blocked = writableOr409(vs);
+        if (blocked) return blocked;
         const parsed = [];
         const failed: { name: string; reason: string }[] = [];
         if (/^otpauth-migration:\/\//i.test(uri.trim())) {
@@ -143,6 +158,8 @@ Bun.serve({
           const uris = await decodeQrImage(tmp);
           const vs = viewState();
           if (!vs.configured) return fail("not configured: no master key yet — run 'ob-plugin-totp-vault-totp list' once in a chat", 409);
+          const blocked = writableOr409(vs);
+          if (blocked) return blocked;
           const parsed = [];
           const failed: { name: string; reason: string }[] = [];
           for (const uri of uris) {
@@ -173,6 +190,8 @@ Bun.serve({
     if (m) {
       const vs = viewState();
       if (!vs.configured) return fail("not configured", 409);
+      const blocked = writableOr409(vs);
+      if (blocked) return blocked;
       const acc = findById(vs.store, m[1]);
       if (!acc) return fail("account not found", 404);
       const action = m[2] ?? "";
@@ -446,11 +465,13 @@ function pageHtml(): string {
       else if (d.error) notice.innerHTML = '<div class="notice error">' + esc(t("decryptError")) + "</div>";
       else notice.innerHTML = "";
       render();
-      const next = accounts.filter(a => a.expiresAt).map(a => a.expiresAt - d.now).sort((a,b) => a-b)[0];
-      clearTimeout(timer);
-      if (next !== undefined) timer = setTimeout(refresh, Math.max(250, next + 250));
     } catch (e) {
       notice.innerHTML = '<div class="notice error">' + esc(String(e.message || e)) + "</div>";
+    } finally {
+      // self-healing poll: a transient failure must never kill the loop
+      clearTimeout(timer);
+      const next = accounts.filter(a => a.expiresAt).map(a => a.expiresAt - Date.now()).sort((a, b) => a - b)[0];
+      timer = setTimeout(refresh, Math.max(1000, Math.min(5000, (next ?? 5000) + 250)));
     }
   }
 

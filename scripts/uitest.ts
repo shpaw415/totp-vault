@@ -126,7 +126,7 @@ try {
 
 // ---------- case 5: search filter ----------
 await api("/api/import/uri", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ uri: `otpauth://totp/Filter:target?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ&issuer=Filter` }) });
-await sleep(5200); // wait for the 5s poll
+await sleep(7000); // one full 5s poll cycle + slack
 const cards = () => doc.querySelectorAll("#list .card").length;
 check("two accounts render", cards() === 2, `cards=${cards()}`);
 ($("search") as any).value = "target";

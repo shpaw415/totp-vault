@@ -13,8 +13,10 @@ import {
   mergeAccounts,
   parseOtpauthUri,
   readMasterKey,
+  resetStore,
   saveStore,
   selftest,
+  storeExists,
   type ImportSummary,
   type OtpAccount,
   type OtpAlgorithm,
@@ -35,6 +37,7 @@ Usage:
   totp show <query>              reveal the secret + otpauth:// URI (sensitive!)
   totp rename <id> <new label>
   totp remove <id> --yes
+  totp reset --yes              WIPE the encrypted store (recovery when the master key is lost)
   totp selftest                  RFC 6238 vectors + codec roundtrips
 
 <query> matches an account by id, issuer or label (case-insensitive substring).
@@ -43,6 +46,22 @@ Secrets are stored encrypted at rest; the master key lives in the plugin vault.`
 function die(msg: string, code = 1): never {
   console.error(`error: ${msg}`);
   process.exit(code);
+}
+
+function loadOrDie(key: string): Store {
+  try {
+    return loadStore(key);
+  } catch (e) {
+    die("the account store exists but can't be decrypted (" + (e instanceof Error ? e.message : String(e)) + ") — restore the master key in Plugins → TOTP Vault → Settings → master_key, or wipe the store deliberately with: totp reset --yes");
+  }
+}
+
+function keyOrDie(): string {
+  const key = readMasterKey();
+  if (key) return key;
+  if (storeExists())
+    die("the account store is encrypted but its master key is missing or changed — restore it in Plugins → TOTP Vault → Settings → master_key, or wipe the store deliberately with: totp reset --yes");
+  die("no master key yet — run 'totp list' once to set up the vault");
 }
 
 function findAccount(store: Store, query: string): OtpAccount | undefined {
@@ -91,7 +110,7 @@ async function main(): Promise<void> {
   if (cmd === "list") {
     await ensureMasterKey();
     const key = readMasterKey();
-    const store = key ? loadStore(key) : emptyStore();
+    const store = key ? loadOrDie(key) : emptyStore();
     if (asJson) {
       console.log(JSON.stringify({ accounts: store.accounts.map(({ secretB32: _s, ...rest }) => rest) }, null, 2));
     } else if (!store.accounts.length) {
@@ -106,9 +125,8 @@ async function main(): Promise<void> {
   if (cmd === "code") {
     const query = args[1];
     if (!query) die("usage: totp code <query>");
-    const key = readMasterKey();
-    if (!key) die("no master key yet — run 'totp list' once to set up the vault");
-    const store = loadStore(key);
+    const key = keyOrDie();
+    const store = loadOrDie(key);
     const acc = findAccount(store, query);
     if (!acc) die(`no account matches "${query}"`, 2);
     const { code, expiresAt, counter } = accountCode(acc);
@@ -191,7 +209,7 @@ async function main(): Promise<void> {
       die("usage: totp import --image <path> | --uri <uri> | --secret <b32> --label <name>");
     }
     const key = readMasterKey();
-    const store = key ? loadStore(key) : emptyStore();
+    const store = key ? loadOrDie(key) : emptyStore();
     await importParsed(store, parsed, failed, asJson);
     return;
   }
@@ -199,9 +217,8 @@ async function main(): Promise<void> {
   if (cmd === "show") {
     const query = args[1];
     if (!query) die("usage: totp show <query>");
-    const key = readMasterKey();
-    if (!key) die("no master key yet — run 'totp list' once to set up the vault");
-    const store = loadStore(key);
+    const key = keyOrDie();
+    const store = loadOrDie(key);
     const acc = findAccount(store, query);
     if (!acc) die(`no account matches "${query}"`, 2);
     if (asJson) console.log(JSON.stringify({ ...acc, uri: accountToUri(acc) }, null, 2));
@@ -212,9 +229,8 @@ async function main(): Promise<void> {
   if (cmd === "rename") {
     const [query, newLabel] = [args[1], args[2]];
     if (!query || !newLabel) die("usage: totp rename <id> <new label>");
-    const key = readMasterKey();
-    if (!key) die("no master key yet — run 'totp list' once to set up the vault");
-    const store = loadStore(key);
+    const key = keyOrDie();
+    const store = loadOrDie(key);
     const acc = findAccount(store, query);
     if (!acc) die(`no account matches "${query}"`, 2);
     acc.label = newLabel;
@@ -226,14 +242,20 @@ async function main(): Promise<void> {
   if (cmd === "remove") {
     const query = args[1];
     if (!query || !args.includes("--yes")) die("usage: totp remove <id> --yes");
-    const key = readMasterKey();
-    if (!key) die("no master key yet — run 'totp list' once to set up the vault");
-    const store = loadStore(key);
+    const key = keyOrDie();
+    const store = loadOrDie(key);
     const acc = findAccount(store, query);
     if (!acc) die(`no account matches "${query}"`, 2);
     store.accounts = store.accounts.filter((a) => a.id !== acc.id);
     saveStore(store, key);
     console.log(asJson ? JSON.stringify({ removed: acc.id }) : `removed ${acc.issuer ? acc.issuer + " / " : ""}${acc.label}`);
+    return;
+  }
+
+  if (cmd === "reset") {
+    if (!args.includes("--yes")) die("usage: totp reset --yes  (WIPEs the encrypted account store — recovery path when the master key is lost)");
+    resetStore();
+    console.log(asJson ? JSON.stringify({ reset: true }) : "encrypted account store wiped — import your accounts again");
     return;
   }
 

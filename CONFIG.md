@@ -15,6 +15,15 @@ You normally ask nothing and fill nothing:
    - `ob-plugin-totp-vault-totp selftest` → `all N checks passed`
    - Import a test account or ask for a code: `ob-plugin-totp-vault-totp code <label>`
 
+## Recovery: accounts unreadable after an update (master key lost/changed)
+
+Symptom: the dashboard shows a decrypt error, or the CLI says "the account store exists but can't be decrypted".
+
+1. Preferred: restore the previous key in Plugins → totp-vault → Settings → `master_key` — the store comes back intact.
+2. If the key is unrecoverable: `ob-plugin-totp-vault-totp reset --yes` wipes the encrypted store, then import the accounts again (they are still in Google Authenticator — re-export the QR).
+
+The plugin REFUSES to write over an unreadable store (imports fail with 409, the CLI refuses to mint a new key) — a reset is always deliberate.
+
 ## If the user insists on providing their own master key
 
 Dashboard → Plugins → totp-vault → Settings → `master_key` = 64 hex characters (32 bytes).

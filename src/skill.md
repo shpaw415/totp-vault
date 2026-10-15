@@ -29,6 +29,7 @@ Always answer in the user's language. Never default to one language.
 - Reveal a secret ONLY on explicit request: `totp show <query>` (prints the otpauth:// URI and the base32 secret).
 - Rename: `totp rename <id> <new label>`. Remove: `totp remove <id> --yes`.
 - Sanity check: `totp selftest` (RFC 6238 vectors + codec roundtrips).
+- Recovery: if the store can't be decrypted (master key lost after an update), do NOT re-import blindly — the CLI and dashboard refuse to overwrite. Restore the key in Settings, or wipe deliberately with `totp reset --yes`, then import again (the accounts are still in the user's Google Authenticator).
 
 ## Security rules
 

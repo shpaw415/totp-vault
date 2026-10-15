@@ -305,6 +305,14 @@ function storePath(): string {
 
 const STORE_MAGIC = "TVLT1";
 
+export function storeExists(): boolean {
+  try {
+    return existsSync(storePath()) && readFileSync(storePath()).length > 5;
+  } catch {
+    return false;
+  }
+}
+
 export function readMasterKey(configPathOverride?: string): string | null {
   const path = configPathOverride ?? `/home/agent/.config/open-bot/plugin-${PLUGIN_ID}.json`;
   try {
@@ -350,11 +358,27 @@ export function saveStore(store: Store, masterKeyHex: string): void {
   renameSync(storePath() + ".tmp", storePath());
 }
 
+export function resetStore(): void {
+  try {
+    rmSync(storePath(), { force: true });
+  } catch {
+    // best effort — the file may already be gone
+  }
+}
+
 // ---------- master key provisioning (tool-side) ----------
 
 export async function ensureMasterKey(): Promise<string> {
   const existing = readMasterKey();
   if (existing) return existing;
+  // Never mint a new key over an existing encrypted store: the old accounts
+  // would become permanently unreadable. Recovery is explicit.
+  if (storeExists())
+    throw new Error(
+      "an encrypted account store already exists but its master key is missing or changed — " +
+      "restore the key in Plugins → TOTP Vault → Settings → master_key, " +
+      "or wipe the store deliberately with: ob-plugin-totp-vault-totp reset --yes",
+    );
   const hex = randomBytes(32).toString("hex");
   const proc = Bun.spawn(["ob-plugin", "settings", PLUGIN_ID, `master_key=${hex}`], {
     stdout: "ignore",
