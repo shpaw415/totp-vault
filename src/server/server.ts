@@ -289,7 +289,10 @@ function pageHtml(): string {
   .empty .big { font-size: 40px; margin-bottom: 10px; }
   dialog { border: 1px solid var(--border); border-radius: 14px; background: var(--card); color: var(--text); padding: 20px; width: min(520px, 92vw); }
   dialog::backdrop { background: rgba(8,10,14,.55); }
-  dialog h2 { margin: 0 0 14px; font-size: 17px; }
+  dialog h2 { margin: 0; font-size: 17px; }
+  .dlg-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+  .dlg-close { border: none; background: none; color: var(--muted); font-size: 24px; line-height: 1; cursor: pointer; padding: 2px 9px; border-radius: 8px; }
+  .dlg-close:hover { color: var(--accent); background: var(--accent-soft); }
   .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
   .tabs .btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
   label.f { display: block; margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
@@ -321,7 +324,7 @@ function pageHtml(): string {
 </div>
 
 <dialog id="addDlg">
-  <h2 data-i18n="addTitle">Add an account</h2>
+  <div class="dlg-head"><h2 data-i18n="addTitle">Add an account</h2><button class="dlg-close" id="addClose" title="Esc">×</button></div>
   <div class="tabs">
     <button class="btn small on" data-tab="qr" data-i18n="tabQr">QR image</button>
     <button class="btn small" data-tab="uri" data-i18n="tabUri">URI</button>
@@ -522,6 +525,8 @@ function pageHtml(): string {
   // ---- add dialog ----
   const addDlg = $("addDlg"), impResult = $("impResult");
   $("addBtn").onclick = () => { impResult.innerHTML = ""; addDlg.showModal(); };
+  $("addClose").setAttribute("aria-label", LANG === "fr" ? "Fermer" : "Close");
+  $("addClose").onclick = () => addDlg.close();
   document.querySelectorAll("[data-tab]").forEach((b) => {
     b.onclick = () => {
       document.querySelectorAll("[data-tab]").forEach((x) => x.classList.toggle("on", x === b));

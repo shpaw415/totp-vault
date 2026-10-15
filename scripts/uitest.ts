@@ -86,6 +86,12 @@ $("addBtn")!.dispatchEvent(new win.Event("click", { bubbles: true }));
 await sleep(50);
 const dialogOpen = ($("addDlg") as any).open === true;
 check("add dialog opens", dialogOpen);
+// × close button in the dialog header
+$("addClose")!.dispatchEvent(new win.Event("click", { bubbles: true }));
+await sleep(100);
+check("× button closes the dialog", ($("addDlg") as any).open === false);
+$("addBtn")!.dispatchEvent(new win.Event("click", { bubbles: true }));
+await sleep(100);
 doc.querySelector('[data-tab="uri"]')!.dispatchEvent(new win.Event("click", { bubbles: true }));
 ($("uriText") as any).value = `otpauth://totp/Stress:uitest?secret=${SECRET}&issuer=Stress`;
 $("uriImport")!.dispatchEvent(new win.Event("click", { bubbles: true }));
@@ -189,16 +195,19 @@ const fresh2 = await freshWindow();
 const hotpBtn = fresh2.doc.querySelector("[data-next]") as HTMLElement;
 check("hotp next button rendered", !!hotpBtn);
 const before = (await api("/api/state")).accounts.find((a: any) => a.issuer === "Hotp");
-// happy-dom event dispatch on a long-lived window can be flaky: retry the click
-// and read the toast if the server state never moves.
+// happy-dom long-lived windows can swallow synthetic clicks: each attempt uses a
+// FRESH window (the deterministic path) until the server counter moves.
 let afterHotp: any = before;
+let lastToast = "";
 for (let i = 0; i < 4 && afterHotp?.counter === before?.counter; i++) {
-  if (i % 2 === 0) hotpBtn?.click();
-  else hotpBtn?.dispatchEvent(new fresh2.win.Event("click", { bubbles: true }));
+  const f = await freshWindow();
+  const btn = f.doc.querySelector("[data-next]") as HTMLElement;
+  btn?.click();
   await sleep(900);
   afterHotp = (await api("/api/state")).accounts.find((a: any) => a.issuer === "Hotp");
+  lastToast = f.doc.getElementById("toast")?.textContent ?? "";
 }
-check("hotp counter advanced", afterHotp?.counter === (before?.counter ?? 0) + 1, `${before?.counter} -> ${afterHotp?.counter} toast="${fresh2.doc.getElementById("toast")?.textContent}"`);
+check("hotp counter advanced", afterHotp?.counter === (before?.counter ?? 0) + 1, `${before?.counter} -> ${afterHotp?.counter} toast="${lastToast}"`);
 const oathtool = Bun.spawnSync(["oathtool", "-c", String(afterHotp.counter), "-b", "JBSWY3DPEHPK3PXP"]).stdout.toString().trim();
 check("hotp code matches oathtool", afterHotp?.code === oathtool, `${afterHotp?.code} vs ${oathtool}`);
 
