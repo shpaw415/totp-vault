@@ -1,0 +1,78 @@
+{
+  "$schema": "/home/agent/.config/opencode/skills/plugin/open-bot.plugin.schema.json",
+  "id": "totp-vault",
+  "name": "TOTP Vault",
+  "version": "beta-1",
+  "description": "TOTP/2FA vault: import accounts from Google Authenticator's export QR (otpauth-migration decoded natively, batch QRs supported), generate codes on demand in chat, live codes with countdown in a dashboard tab. Secrets are AES-256-GCM encrypted at rest; the master key lives in the plugin vault. @totp composer mentions resolve code requests to the right account.",
+  "author": "Justin Hallé",
+  "repo": "shpaw415/totp-vault",
+  "category": "security",
+  "tags": [
+    "totp",
+    "2fa",
+    "otp",
+    "authenticator",
+    "security",
+    "vault"
+  ],
+  "permissions": {
+    "desktopTools": true
+  },
+  "configs": [
+    {
+      "key": "master_key",
+      "label": "TOTP master key (64 hex chars — leave empty to auto-generate on first use)",
+      "type": "secret",
+      "def": ""
+    }
+  ],
+  "setup": {
+    "commands": [
+      "sudo apt-get install -y zbar-tools"
+    ]
+  },
+  "tools": [
+    {
+      "name": "totp",
+      "content": "#!/usr/bin/env bun\n// ob-plugin-totp-vault-totp — TOTP/2FA vault CLI for the totp-vault plugin\nimport {\n  accountCode,\n  accountToUri,\n  base32Decode,\n  base32Encode,\n  decodeMigrationUri,\n  decodeQrImage,\n  emptyStore,\n  ensureMasterKey,\n  loadStore,\n  mergeAccounts,\n  parseOtpauthUri,\n  readMasterKey,\n  saveStore,\n  selftest,\n  type ImportSummary,\n  type OtpAccount,\n  type OtpAlgorithm,\n  type OtpType,\n  type ParsedOtp,\n  type Store,\n} from \"/usr/local/bin/ob-plugin-totp-vault-lib.ts\";\n\nconst USAGE = `ob-plugin-totp-vault-totp — TOTP/2FA vault\n\nUsage:\n  totp list [--json]\n  totp code <query> [--json]     current code (TOTP) / next code (HOTP, increments)\n  totp import --image <path>     import QR image (Google Authenticator export or otpauth://)\n  totp import --uri <uri>        import from otpauth:// or otpauth-migration:// URI\n  totp import --secret <b32> --label <name> [--issuer <name>] [--digits 6|8]\n                [--period <sec>] [--alg SHA1|SHA256|SHA512] [--type totp|hotp] [--counter <n>]\n  totp show <query>              reveal the secret + otpauth:// URI (sensitive!)\n  totp rename <id> <new label>\n  totp remove <id> --yes\n  totp selftest                  RFC 6238 vectors + codec roundtrips\n\n<query> matches an account by id, issuer or label (case-insensitive substring).\nSecrets are stored encrypted at rest; the master key lives in the plugin vault.`;\n\nfunction die(msg: string, code = 1): never {\n  console.error(`error: ${msg}`);\n  process.exit(code);\n}\n\nfunction findAccount(store: Store, query: string): OtpAccount | undefined {\n  const q = query.trim().toLowerCase();\n  return (\n    store.accounts.find((a) => a.id === q) ??\n    store.accounts.find((a) => a.issuer.toLowerCase() === q) ??\n    store.accounts.find((a) => a.label.toLowerCase() === q) ??\n    store.accounts.find((a) => `${a.issuer}:${a.label}`.toLowerCase() === q) ??\n    store.accounts.find((a) => a.issuer.toLowerCase().includes(q)) ??\n    store.accounts.find((a) => a.label.toLowerCase().includes(q))\n  );\n}\n\nasync function importParsed(store: Store, parsed: ParsedOtp[], failed: { name: string; reason: string }[], asJson: boolean): Promise<ImportSummary> {\n  const summary = mergeAccounts(store, parsed, failed);\n  if (summary.added.length) saveStore(store, await ensureMasterKey());\n  if (asJson) {\n    console.log(JSON.stringify(summary, null, 2));\n  } else {\n    for (const a of summary.added) console.log(`added: ${a.issuer ? a.issuer + \" / \" : \"\"}${a.label} (id ${a.id})`);\n    for (const d of summary.duplicates) console.log(`duplicate skipped: ${d.issuer ? d.issuer + \" / \" : \"\"}${d.label}`);\n    for (const f of summary.failed) console.log(`failed: ${f.name} — ${f.reason}`);\n    if (!summary.added.length && !summary.duplicates.length && !summary.failed.length) console.log(\"nothing to import\");\n  }\n  return summary;\n}\n\nasync function main(): Promise<void> {\n  const args = process.argv.slice(2);\n  const cmd = args[0];\n  const asJson = args.includes(\"--json\");\n  if (!cmd || cmd === \"help\" || cmd === \"--help\" || cmd === \"-h\") {\n    console.log(USAGE);\n    process.exit(cmd ? 0 : 2);\n  }\n\n  if (cmd === \"selftest\") {\n    const results = selftest();\n    const failed = results.filter((r) => !r.ok);\n    for (const r of failed) console.error(`FAIL ${r.name}: ${r.detail}`);\n    console.log(asJson ? JSON.stringify({ passed: results.length - failed.length, failed: failed.length }) : failed.length ? `${failed.length}/${results.length} checks FAILED` : `all ${results.length} checks passed`);\n    process.exit(failed.length ? 1 : 0);\n  }\n\n  if (cmd === \"list\") {\n    await ensureMasterKey();\n    const key = readMasterKey();\n    const store = key ? loadStore(key) : emptyStore();\n    if (asJson) {\n      console.log(JSON.stringify({ accounts: store.accounts.map(({ secretB32: _s, ...rest }) => rest) }, null, 2));\n    } else if (!store.accounts.length) {\n      console.log(\"no accounts yet — import with: totp import --image <qr.png>\");\n    } else {\n      for (const a of store.accounts)\n        console.log(`${a.id}  ${a.issuer ? a.issuer + \" — \" : \"\"}${a.label}  [${a.type} ${a.algorithm} ${a.digits}d ${a.period}s]`);\n    }\n    return;\n  }\n\n  if (cmd === \"code\") {\n    const query = args[1];\n    if (!query) die(\"usage: totp code <query>\");\n    const key = readMasterKey();\n    if (!key) die(\"no master key yet — run 'totp list' once to set up the vault\");\n    const store = loadStore(key);\n    const acc = findAccount(store, query);\n    if (!acc) die(`no account matches \"${query}\"`, 2);\n    const { code, expiresAt, counter } = accountCode(acc);\n    if (acc.type === \"hotp\") {\n      acc.counter += 1;\n      saveStore(store, key);\n    }\n    const remain = expiresAt ? Math.max(0, Math.round((expiresAt - Date.now()) / 1000)) : null;\n    if (asJson) console.log(JSON.stringify({ id: acc.id, issuer: acc.issuer, label: acc.label, code, remainingSeconds: remain, counter }, null, 2));\n    else console.log(remain === null ? `${code} (counter ${counter - 1})` : `${code} (valid ${remain}s)`);\n    return;\n  }\n\n  if (cmd === \"import\") {\n    const imageIdx = args.indexOf(\"--image\");\n    const uriIdx = args.indexOf(\"--uri\");\n    const secretIdx = args.indexOf(\"--secret\");\n    const parsed: ParsedOtp[] = [];\n    const failed: { name: string; reason: string }[] = [];\n    if (imageIdx > 0) {\n      const imagePath = args[imageIdx + 1];\n      if (!imagePath) die(\"usage: totp import --image <path>\");\n      let uris: string[];\n      try {\n        uris = await decodeQrImage(imagePath);\n      } catch (e) {\n        die(e instanceof Error ? e.message : String(e));\n      }\n      for (const uri of uris) {\n        try {\n          if (/^otpauth-migration:\\/\\//i.test(uri)) {\n            const res = decodeMigrationUri(uri);\n            parsed.push(...res.accounts);\n            failed.push(...res.failed);\n          } else parsed.push(parseOtpauthUri(uri));\n        } catch (e) {\n          failed.push({ name: uri.slice(0, 60), reason: e instanceof Error ? e.message : String(e) });\n        }\n      }\n      if (!uris.length) die(\"no otpauth QR code found in the image\");\n    } else if (uriIdx > 0) {\n      const uri = args[uriIdx + 1];\n      if (!uri) die(\"usage: totp import --uri <uri>\");\n      try {\n        if (/^otpauth-migration:\\/\\//i.test(uri)) {\n          const res = decodeMigrationUri(uri);\n          parsed.push(...res.accounts);\n          failed.push(...res.failed);\n        } else parsed.push(parseOtpauthUri(uri));\n      } catch (e) {\n        die(e instanceof Error ? e.message : String(e));\n      }\n    } else if (secretIdx > 0) {\n      const get = (flag: string): string | undefined => {\n        const i = args.indexOf(flag);\n        return i > 0 ? args[i + 1] : undefined;\n      };\n      const secret = args[secretIdx + 1];\n      const label = get(\"--label\");\n      if (!secret || !label) die(\"usage: totp import --secret <b32> --label <name> [...]\");\n      try {\n        base32Decode(secret);\n      } catch {\n        die(\"invalid base32 secret\");\n      }\n      const algRaw = (get(\"--alg\") ?? \"SHA1\").toUpperCase();\n      const algorithm: OtpAlgorithm = algRaw === \"SHA256\" ? \"SHA256\" : algRaw === \"SHA512\" ? \"SHA512\" : \"SHA1\";\n      const type: OtpType = (get(\"--type\") ?? \"totp\").toLowerCase() === \"hotp\" ? \"hotp\" : \"totp\";\n      parsed.push({\n        label,\n        issuer: get(\"--issuer\") ?? \"\",\n        secretB32: base32Encode(base32Decode(secret)),\n        algorithm,\n        digits: Number(get(\"--digits\") ?? 6) === 8 ? 8 : 6,\n        period: Math.max(1, Number(get(\"--period\") ?? 30) || 30),\n        type,\n        counter: Number(get(\"--counter\") ?? 0) || 0,\n      });\n    } else {\n      die(\"usage: totp import --image <path> | --uri <uri> | --secret <b32> --label <name>\");\n    }\n    const key = readMasterKey();\n    const store = key ? loadStore(key) : emptyStore();\n    await importParsed(store, parsed, failed, asJson);\n    return;\n  }\n\n  if (cmd === \"show\") {\n    const query = args[1];\n    if (!query) die(\"usage: totp show <query>\");\n    const key = readMasterKey();\n    if (!key) die(\"no master key yet — run 'totp list' once to set up the vault\");\n    const store = loadStore(key);\n    const acc = findAccount(store, query);\n    if (!acc) die(`no account matches \"${query}\"`, 2);\n    if (asJson) console.log(JSON.stringify({ ...acc, uri: accountToUri(acc) }, null, 2));\n    else console.log(`${accountToUri(acc)}\\nsecret: ${acc.secretB32}`);\n    return;\n  }\n\n  if (cmd === \"rename\") {\n    const [query, newLabel] = [args[1], args[2]];\n    if (!query || !newLabel) die(\"usage: totp rename <id> <new label>\");\n    const key = readMasterKey();\n    if (!key) die(\"no master key yet — run 'totp list' once to set up the vault\");\n    const store = loadStore(key);\n    const acc = findAccount(store, query);\n    if (!acc) die(`no account matches \"${query}\"`, 2);\n    acc.label = newLabel;\n    saveStore(store, key);\n    console.log(asJson ? JSON.stringify({ id: acc.id, label: acc.label }) : `renamed to \"${newLabel}\"`);\n    return;\n  }\n\n  if (cmd === \"remove\") {\n    const query = args[1];\n    if (!query || !args.includes(\"--yes\")) die(\"usage: totp remove <id> --yes\");\n    const key = readMasterKey();\n    if (!key) die(\"no master key yet — run 'totp list' once to set up the vault\");\n    const store = loadStore(key);\n    const acc = findAccount(store, query);\n    if (!acc) die(`no account matches \"${query}\"`, 2);\n    store.accounts = store.accounts.filter((a) => a.id !== acc.id);\n    saveStore(store, key);\n    console.log(asJson ? JSON.stringify({ removed: acc.id }) : `removed ${acc.issuer ? acc.issuer + \" / \" : \"\"}${acc.label}`);\n    return;\n  }\n\n  die(`unknown command \"${cmd}\" — run without args for usage`, 2);\n}\n\nmain().catch((e) => die(e instanceof Error ? e.message : String(e)));\n"
+    }
+  ],
+  "files": [
+    {
+      "name": "lib.ts",
+      "source": "src/lib.ts"
+    },
+    {
+      "name": "server.ts",
+      "source": "src/server/server.ts",
+      "exec": true
+    }
+  ],
+  "dashboard": {
+    "pages": {
+      "entry": "server.ts"
+    },
+    "tabs": [
+      {
+        "id": "totp",
+        "title": "TOTP Vault",
+        "kind": "app",
+        "icon": "🔐"
+      }
+    ],
+    "mentions": [
+      {
+        "section": "totp",
+        "label": "TOTP",
+        "path": "/mentions"
+      }
+    ]
+  },
+  "skills": [
+    {
+      "name": "totp-vault",
+      "description": "Load when the user asks for a 2FA/TOTP/authenticator code, wants to import or export accounts from Google Authenticator (QR transfer), or manages their TOTP vault. Always answer in the user's language.",
+      "body": "# totp-vault — TOTP/2FA vault\n\nTOTP/HOTP code vault for this desktop. Codes are generated on demand; secrets are encrypted at rest with a master key stored in the plugin's `master_key` secret setting. Import from Google Authenticator uses the app's own export QR format (otpauth-migration).\n\n## Language\n\nAlways answer in the user's language. Never default to one language.\n\n## First use / setup\n\n- The master key (`master_key` secret setting) is generated and saved automatically the first time the CLI runs. If a dashboard action reports \"not configured\", run the CLI once:\n  `ob-plugin-totp-vault-totp list`\n\n## Importing from Google Authenticator (the usual flow)\n\n1. Ask the user to open Google Authenticator on their phone → Transfer accounts → Export accounts → select the accounts → a QR code appears.\n2. Ask them to send you a screenshot of that QR (multiple QR codes in one image are handled).\n3. Save the image under /home/agent/workspace and run:\n   `ob-plugin-totp-vault-totp import --image <path>`\n4. Report what was added by name — never print secrets. If the export showed several QR screens (batches), repeat per screenshot.\n5. Also accepted:\n   - `totp import --uri <otpauth://…>` (any authenticator app export)\n   - `totp import --secret <base32> --label <name> [--issuer <name>] [--digits 6|8] [--alg SHA1|SHA256|SHA512] [--type totp|hotp] [--counter <n>]`\n\n## Daily use\n\n- Current code: `ob-plugin-totp-vault-totp code <query>` (matches by id, issuer or label, case-insensitive). Print the code and its remaining validity — codes expire, so mention how many seconds are left; re-run if it expired mid-sentence.\n- List accounts: `totp list` (add `--json` for machine output).\n- Reveal a secret ONLY on explicit request: `totp show <query>` (prints the otpauth:// URI and the base32 secret).\n- Rename: `totp rename <id> <new label>`. Remove: `totp remove <id> --yes`.\n- Sanity check: `totp selftest` (RFC 6238 vectors + codec roundtrips).\n\n## Security rules\n\n- Never print or log secrets (`show` output, JSON with secrets) unless the user explicitly asks for that account's secret.\n- Codes are sensitive too: generate and print one only when the user asks for it.\n- When the user asks \"my code for X\" in a language, answer in that language with the code and its validity.\n\n## Dashboard\n\n- The **TOTP Vault** tab in the Dashboards drawer shows live codes with countdown rings, one-click copy, QR/URI/manual import, rename, delete and secret reveal. Light and dark themes are both supported.\n- The chat composer's **@totp** menu lists accounts; when a message references one, generate its code with `totp code <label>` and answer directly.\n"
+    }
+  ]
+}
