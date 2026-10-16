@@ -83,6 +83,16 @@
   </div>
 </dialog>
 
+<dialog id="askDlg">
+  <h2 id="askTitle"></h2>
+  <p id="askBody" style="color:var(--muted);font-size:13px"></p>
+  <input class="f" id="askInput" hidden>
+  <div class="actions">
+    <button class="btn" id="askCancel" data-i18n="cancel">Cancel</button>
+    <button class="btn primary" id="askOk" data-i18n="ok">OK</button>
+  </div>
+</dialog>
+
 <div id="toast"></div>
 
 <script src="./app.ts"></script>

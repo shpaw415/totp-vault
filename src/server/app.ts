@@ -16,7 +16,8 @@
       notConfigured: "Not set up yet: in a chat, just ask for one of your codes (or run 'totp list') — the master key is created automatically.",
       decryptError: "Could not decrypt the account store (the master key changed?). Import your accounts again.",
       empty: "No account yet", emptyHint: "Export from Google Authenticator and import the QR here.",
-      confirmDelete: "Delete this account?", renamePrompt: "New account label:",
+      confirmDelete: "Delete this account?", renamePrompt: "New account label:", ok: "OK",
+      needSecretLabel: "secret + account required",
       imported: "Imported:", duplicates: "already present:", failed: "Failed:", nothing: "Nothing imported",
       next: "Next code", reveal: "Show secret", del: "Delete", copy: "Copy code",
     },
@@ -32,7 +33,8 @@
       notConfigured: "Pas encore configuré : dans une conversation, demande simplement un de tes codes (ou lance 'totp list') — la clé maîtresse est créée automatiquement.",
       decryptError: "Impossible de déchiffrer le coffre (clé maîtresse changée ?). Réimporte tes comptes.",
       empty: "Aucun compte pour l'instant", emptyHint: "Exporte depuis Google Authenticator et importe le QR ici.",
-      confirmDelete: "Supprimer ce compte ?", renamePrompt: "Nouveau libellé du compte :",
+      confirmDelete: "Supprimer ce compte ?", renamePrompt: "Nouveau libellé du compte :", ok: "OK",
+      needSecretLabel: "secret + compte requis",
       imported: "Importés :", duplicates: "déjà présents :", failed: "Échecs :", nothing: "Rien à importer",
       next: "Code suivant", reveal: "Voir le secret", del: "Supprimer", copy: "Copier le code",
     },
@@ -63,6 +65,26 @@
     (el as HTMLElement & { _t?: ReturnType<typeof setTimeout> })._t = setTimeout(() => el.classList.remove("show"), 1600);
   }
   const fmt = (code: string, digits: number): string => digits === 8 ? code.slice(0,4) + " " + code.slice(4) : code.slice(0,3) + " " + code.slice(3);
+
+  // In-page confirm/prompt — window.confirm/prompt are silently blocked in the
+  // dashboard's sandboxed iframe (no allow-modals), which made delete/rename no-ops.
+  function ask(opts: { title: string; body?: string; input?: string }): Promise<string | null> {
+    return new Promise((resolve) => {
+      let settled = false;
+      const done = (v: string | null): void => { if (settled) return; settled = true; dlg.close(); resolve(v); };
+      $("askTitle").textContent = opts.title;
+      $("askBody").textContent = opts.body || "";
+      const inp = $("askInput") as HTMLInputElement;
+      inp.hidden = opts.input === undefined;
+      inp.value = opts.input || "";
+      const dlg = $("askDlg") as HTMLDialogElement;
+      $("askOk").onclick = () => done(inp.hidden ? "ok" : (inp.value.trim() || null));
+      $("askCancel").onclick = () => done(null);
+      dlg.onclose = () => done(null);
+      dlg.showModal();
+      if (!inp.hidden) inp.select();
+    });
+  }
 
   async function api(path: string, opts?: RequestInit): Promise<any> {
     const r = await fetch(path, opts);
@@ -136,11 +158,12 @@
       try { await navigator.clipboard.writeText(acc.code); toast(t("copied")); }
       catch { toast(acc.code); }
     } else if (el.dataset.del) {
-      if (confirm(t("confirmDelete") + "\n" + (acc.issuer ? acc.issuer + " / " : "") + acc.label)) {
+      const name = (acc.issuer ? acc.issuer + " / " : "") + acc.label;
+      if (await ask({ title: t("confirmDelete"), body: name }) === "ok") {
         try { await api("api/accounts/" + id, { method: "DELETE" }); refresh(); } catch (e) { toast((e as Error).message); }
       }
     } else if (el.dataset.rename) {
-      const v = prompt(t("renamePrompt"), acc.label);
+      const v = await ask({ title: t("renamePrompt"), input: acc.label });
       if (v && v.trim()) {
         try { await api("api/accounts/" + id + "/rename", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ label: v.trim() }) }); refresh(); } catch (e) { toast((e as Error).message); }
       }
@@ -205,7 +228,7 @@
   $("mImport").onclick = async () => {
     const secret = ($("mSecret") as HTMLInputElement).value.replace(/\s+/g, "").toUpperCase();
     const label = ($("mLabel") as HTMLInputElement).value.trim();
-    if (!secret || !label) { impResult.innerHTML = '<div class="err">✗ secret + label required</div>'; return; }
+    if (!secret || !label) { impResult.innerHTML = '<div class="err">✗ ' + esc(t("needSecretLabel")) + "</div>"; return; }
     const q = new URLSearchParams({ secret });
     if (($("mIssuer") as HTMLInputElement).value.trim()) q.set("issuer", ($("mIssuer") as HTMLInputElement).value.trim());
     q.set("algorithm", ($("mAlg") as HTMLSelectElement).value);
