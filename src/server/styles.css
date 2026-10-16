@@ -21,13 +21,16 @@ header h1 { font-size: 20px; margin: 0; flex: 1; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
 .btn.danger { color: var(--danger); border-color: var(--danger); }
 .btn.small { padding: 4px 9px; font-size: 13px; }
-.iconbtn { border: 1px solid transparent; background: none; color: var(--muted); cursor: pointer; font-size: 15px; border-radius: 6px; padding: 4px 7px; }
+.iconbtn { border: 1px solid transparent; background: none; color: var(--muted); cursor: pointer; border-radius: 6px; padding: 5px 7px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.iconbtn svg { width: 18px; height: 18px; display: block; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .iconbtn:hover { color: var(--accent); background: var(--accent-soft); }
 .iconbtn.del:hover { color: var(--danger); background: var(--danger-soft); }
-/* Mobile/touch: kill the double-tap-zoom delay and grow tap targets */
+
 .btn, .iconbtn, .dlg-close, .tabs .btn { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+/* Mobile/touch: kill the double-tap-zoom delay and grow tap targets */
 @media (pointer: coarse) {
-  .iconbtn { padding: 9px 12px; font-size: 17px; }
+  .iconbtn { padding: 9px 11px; }
+  .iconbtn svg { width: 20px; height: 20px; }
   .btn { padding: 10px 16px; }
   .btn.small { padding: 8px 12px; font-size: 14px; }
   .dlg-close { padding: 6px 13px; }
@@ -42,9 +45,17 @@ header h1 { font-size: 20px; margin: 0; flex: 1; }
 .code { font: 700 26px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 2px; min-width: 140px; cursor: pointer; }
 .code.hotp { cursor: default; }
 .who { flex: 1; min-width: 0; }
-.who .issuer { font-weight: 600; }
+.who .issuer { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .who .label { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.who .meta { color: var(--muted); font-size: 11px; margin-top: 2px; }
+.who .meta { color: var(--muted); font-size: 11px; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Narrow phones: one row must hold ring + code + who + 4 action buttons. */
+@media (max-width: 480px) {
+  .card { gap: 8px; padding: 10px; }
+  .ringwrap, .ringwrap svg { width: 40px; height: 40px; }
+  .code { min-width: 0; font-size: 20px; letter-spacing: 1px; }
+  .iconbtn { padding: 7px 6px; }
+  .iconbtn svg { width: 18px; height: 18px; }
+}
 .empty { text-align: center; padding: 46px 18px; color: var(--muted); }
 .empty .big { font-size: 40px; margin-bottom: 10px; }
 dialog { border: 1px solid var(--border); border-radius: 14px; background: var(--card); color: var(--text); padding: 20px; width: min(520px, 92vw); }

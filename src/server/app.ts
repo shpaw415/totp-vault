@@ -30,7 +30,7 @@
       confirmDelete: "Delete this account?", renamePrompt: "New account label:", ok: "OK",
       needSecretLabel: "secret + account required",
       imported: "Imported:", duplicates: "already present:", failed: "Failed:", nothing: "Nothing imported",
-      next: "Next code", reveal: "Show secret", del: "Delete", copy: "Copy code",
+      next: "Next code", reveal: "Show secret", del: "Delete", copy: "Copy code", rename: "Rename",
     },
     fr: {
       title: "Coffre TOTP", add: "+ Ajouter", search: "Filtrer par service ou compte…",
@@ -47,11 +47,22 @@
       confirmDelete: "Supprimer ce compte ?", renamePrompt: "Nouveau libellé du compte :", ok: "OK",
       needSecretLabel: "secret + compte requis",
       imported: "Importés :", duplicates: "déjà présents :", failed: "Échecs :", nothing: "Rien à importer",
-      next: "Code suivant", reveal: "Voir le secret", del: "Supprimer", copy: "Copier le code",
+      next: "Code suivant", reveal: "Voir le secret", del: "Supprimer", copy: "Copier le code", rename: "Renommer",
     },
   };
   const t = (k: string): string => I18N[LANG][k] ?? I18N.en[k] ?? k;
   const esc = (s: unknown): string => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string));
+  // Inline SVG action icons (currentColor, sized by CSS). Emoji glyphs rendered
+  // wildly differently per platform: tofu on desktop Chromium, giant color
+  // emoji on Android, the trash sometimes missing entirely — v0.2.10.
+  const ICONS: Record<string, string> = {
+    next: '<path d="M5 4l10 8-10 8V4Z"/><path d="M19 5v14"/>',
+    copy: '<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
+    rename: '<path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
+    reveal: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>',
+    del: '<path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/>',
+  };
+  const ico = (n: string): string => '<svg viewBox="0 0 24 24" aria-hidden="true">' + ICONS[n] + "</svg>";
   document.documentElement.lang = LANG;
   document.querySelectorAll<HTMLElement>("[data-i18n]").forEach((el) => (el.textContent = t(el.dataset.i18n!)));
   document.querySelectorAll<HTMLInputElement>("[data-i18n-ph]").forEach((el) => (el.placeholder = t(el.dataset.i18nPh!)));
@@ -164,11 +175,11 @@
         '<div class="who"><div class="issuer">' + esc(a.issuer || "—") + "</div>" +
         '<div class="label">' + esc(a.label) + "</div>" +
         '<div class="meta">' + esc(a.type.toUpperCase() + " · " + a.algorithm + " · " + a.digits + "d") + "</div></div>" +
-        (a.type === "hotp" ? '<button class="iconbtn" data-next="' + a.id + '" title="' + esc(t("next")) + '">⏭</button>' : "") +
-        '<button class="iconbtn" data-copy="' + a.id + '" title="' + esc(t("copy")) + '">📋</button>' +
-        '<button class="iconbtn" data-rename="' + a.id + '" title="✎">✎</button>' +
-        '<button class="iconbtn" data-reveal="' + a.id + '" title="' + esc(t("reveal")) + '">👁</button>' +
-        '<button class="iconbtn del" data-del="' + a.id + '" title="' + esc(t("del")) + '">🗑</button>';
+        (a.type === "hotp" ? '<button class="iconbtn" data-next="' + a.id + '" title="' + esc(t("next")) + '">' + ico("next") + "</button>" : "") +
+        '<button class="iconbtn" data-copy="' + a.id + '" title="' + esc(t("copy")) + '">' + ico("copy") + "</button>" +
+        '<button class="iconbtn" data-rename="' + a.id + '" title="' + esc(t("rename")) + '">' + ico("rename") + "</button>" +
+        '<button class="iconbtn" data-reveal="' + a.id + '" title="' + esc(t("reveal")) + '">' + ico("reveal") + "</button>" +
+        '<button class="iconbtn del" data-del="' + a.id + '" title="' + esc(t("del")) + '">' + ico("del") + "</button>";
       list.appendChild(card);
       cardRefs.set(a.id, {
         code: card.querySelector(".code") as HTMLElement,
