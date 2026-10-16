@@ -12,7 +12,7 @@ import {
   loadStore,
   mergeAccounts,
   parseOtpauthUri,
-  readMasterKey,
+  resolveMasterKey,
   resetStore,
   saveStore,
   selftest,
@@ -57,7 +57,7 @@ function loadOrDie(key: string): Store {
 }
 
 function keyOrDie(): string {
-  const key = readMasterKey();
+  const key = resolveMasterKey();
   if (key) return key;
   if (storeExists())
     die("the account store is encrypted but its master key is missing or changed — restore it in Plugins → TOTP Vault → Settings → master_key, or wipe the store deliberately with: totp reset --yes");
@@ -109,7 +109,7 @@ async function main(): Promise<void> {
 
   if (cmd === "list") {
     await ensureMasterKey();
-    const key = readMasterKey();
+    const key = resolveMasterKey();
     const store = key ? loadOrDie(key) : emptyStore();
     if (asJson) {
       console.log(JSON.stringify({ accounts: store.accounts.map(({ secretB32: _s, ...rest }) => rest) }, null, 2));
@@ -208,7 +208,7 @@ async function main(): Promise<void> {
     } else {
       die("usage: totp import --image <path> | --uri <uri> | --secret <b32> --label <name>");
     }
-    const key = readMasterKey();
+    const key = resolveMasterKey();
     const store = key ? loadOrDie(key) : emptyStore();
     await importParsed(store, parsed, failed, asJson);
     return;

@@ -3,7 +3,7 @@
 // Google Authenticator otpauth-migration:// protobuf decoding,
 // AES-256-GCM encrypted account store, master-key handling via the open-bot vault.
 import { createHmac, createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { mkdirSync, readFileSync, renameSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, renameSync, writeFileSync, rmSync, existsSync, chmodSync } from "node:fs";
 
 export const PLUGIN_ID = "totp-vault";
 
@@ -313,16 +313,24 @@ export function storeExists(): boolean {
   }
 }
 
-export function readMasterKey(configPathOverride?: string): string | null {
-  const path = configPathOverride ?? `/home/agent/.config/open-bot/plugin-${PLUGIN_ID}.json`;
+function settingsKeyPath(configPathOverride?: string): string {
+  return configPathOverride ?? process.env.TOTP_VAULT_CONFIG ?? `/home/agent/.config/open-bot/plugin-${PLUGIN_ID}.json`;
+}
+
+function readSettingsKey(configPathOverride?: string): string | null {
   try {
-    const cfg = JSON.parse(readFileSync(path, "utf8"));
+    const cfg = JSON.parse(readFileSync(settingsKeyPath(configPathOverride), "utf8"));
     const v = cfg?.settings?.master_key;
-    if (typeof v === "string" && /^[0-9a-f]{64}$/i.test(v)) return v.toLowerCase();
-    return null;
+    return typeof v === "string" && /^[0-9a-f]{64}$/i.test(v) ? v.toLowerCase() : null;
   } catch {
     return null;
   }
+}
+
+export function readMasterKey(configPathOverride?: string): string | null {
+  const v = readSettingsKey(configPathOverride);
+  if (v) return v;
+  return readKeyring();
 }
 
 export function emptyStore(): Store {
@@ -356,6 +364,14 @@ export function saveStore(store: Store, masterKeyHex: string): void {
   mkdirSync(dataDir(), { recursive: true });
   writeFileSync(storePath() + ".tmp", out);
   renameSync(storePath() + ".tmp", storePath());
+  // Mirror the key next to the store: the plugin settings can be rewritten by
+  // the platform (new version install, settings re-sync) and losing the only
+  // copy bricks the vault. The mirror keeps codes alive across updates.
+  try {
+    writeKeyring(masterKeyHex);
+  } catch {
+    // best effort — the store itself is already saved
+  }
 }
 
 export function resetStore(): void {
@@ -364,13 +380,115 @@ export function resetStore(): void {
   } catch {
     // best effort — the file may already be gone
   }
+  try {
+    rmSync(keyringPath(), { force: true });
+  } catch {
+    // best effort
+  }
+}
+
+// ---------- master key mirror (survives settings resets on plugin updates) ----------
+
+function keyringPath(): string {
+  return `${dataDir()}/master.key`;
+}
+
+function readKeyring(): string | null {
+  try {
+    const v = readFileSync(keyringPath(), "utf8").trim();
+    return /^[0-9a-f]{64}$/i.test(v) ? v.toLowerCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeKeyring(hex: string): void {
+  mkdirSync(dataDir(), { recursive: true });
+  writeFileSync(keyringPath() + ".tmp", hex.toLowerCase() + "\n", { mode: 0o600 });
+  renameSync(keyringPath() + ".tmp", keyringPath());
+  try {
+    chmodSync(keyringPath(), 0o600);
+  } catch {
+    // best effort — mode is already 0600 from writeFileSync
+  }
+}
+
+// Push a healed key back into the plugin settings (fire-and-forget: the
+// keyring fallback already works even while the settings sync is pending).
+// Skipped in test mode (TOTP_VAULT_CONFIG set) so selftests never touch the
+// real plugin settings.
+function healSettingsKey(hex: string): void {
+  if (process.env.TOTP_VAULT_CONFIG) return;
+  try {
+    const proc = Bun.spawn(["ob-plugin", "settings", PLUGIN_ID, `master_key=${hex}`], {
+      stdout: "ignore",
+      stderr: "ignore",
+    });
+    void proc.exited;
+  } catch {
+    // best effort
+  }
+}
+
+// The key that actually decrypts the store: the settings copy, healed from the
+// keyring mirror when the settings copy is missing or was rewritten by an
+// update. Arms the mirror for pre-mirror stores on first successful resolve.
+export function resolveMasterKey(): string | null {
+  const settingsKey = readSettingsKey();
+  if (!storeExists()) {
+    if (!readKeyring() && settingsKey) {
+      try {
+        writeKeyring(settingsKey);
+      } catch {
+        // best effort
+      }
+    }
+    return settingsKey ?? readKeyring();
+  }
+  if (settingsKey) {
+    try {
+      loadStore(settingsKey);
+      if (!readKeyring()) {
+        try {
+          writeKeyring(settingsKey);
+        } catch {
+          // best effort
+        }
+      }
+      return settingsKey;
+    } catch {
+      // settings key doesn't decrypt the store — try the mirror below
+    }
+  }
+  const mirrored = readKeyring();
+  if (mirrored && mirrored !== settingsKey) {
+    try {
+      loadStore(mirrored);
+      healSettingsKey(mirrored);
+      return mirrored;
+    } catch {
+      // mirror doesn't decrypt either — surface the raw decrypt error
+    }
+  }
+  return settingsKey ?? mirrored;
 }
 
 // ---------- master key provisioning (tool-side) ----------
 
 export async function ensureMasterKey(): Promise<string> {
   const existing = readMasterKey();
-  if (existing) return existing;
+  if (existing) {
+    // Arm the mirror for pre-mirror vaults: settings copy is fine, but the
+    // local mirror doesn't exist yet.
+    if (!readKeyring()) {
+      try {
+        writeKeyring(existing);
+      } catch {
+        // best effort
+      }
+    }
+    return existing;
+  }
   // Never mint a new key over an existing encrypted store: the old accounts
   // would become permanently unreadable. Recovery is explicit.
   if (storeExists())
@@ -380,19 +498,30 @@ export async function ensureMasterKey(): Promise<string> {
       "or wipe the store deliberately with: ob-plugin-totp-vault-totp reset --yes",
     );
   const hex = randomBytes(32).toString("hex");
+  // Mirror first: even if the settings write or its sync hiccups, the key (and
+  // every code) stays alive through the local mirror.
+  try {
+    writeKeyring(hex);
+  } catch {
+    // best effort — settings remains the only copy until the next save
+  }
   const proc = Bun.spawn(["ob-plugin", "settings", PLUGIN_ID, `master_key=${hex}`], {
     stdout: "ignore",
     stderr: "pipe",
   });
   const err = await new Response(proc.stderr).text();
   const code = await proc.exited;
-  if (code !== 0) throw new Error(`could not save the master key to the plugin settings: ${err.trim() || `exit ${code}`}`);
+  if (code !== 0) {
+    if (readKeyring() === hex) return hex;
+    throw new Error(`could not save the master key to the plugin settings: ${err.trim() || `exit ${code}`}`);
+  }
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     const k = readMasterKey();
     if (k) return k;
     await Bun.sleep(1000);
   }
+  if (readKeyring() === hex) return hex;
   throw new Error("master key saved to the plugin settings but not synced to the config yet — retry in a few seconds");
 }
 
@@ -571,6 +700,19 @@ export function selftest(): { name: string; ok: boolean; detail?: string }[] {
     tampered = true;
   }
   check("store wrong key rejected", tampered, true);
+
+  // keyring mirror: written on save, readable, heals a lost/wrong settings key
+  const mirror = readKeyring();
+  check("keyring mirror written on save", mirror, keyHex);
+  process.env.TOTP_VAULT_CONFIG = `${tmp}/config.json`;
+  writeFileSync(`${tmp}/config.json`, JSON.stringify({ settings: { master_key: randomBytes(32).toString("hex") } }));
+  const healed = resolveMasterKey();
+  check("resolve heals a rewritten settings key", healed, keyHex);
+  rmSync(`${tmp}/master.key`, { force: true });
+  writeFileSync(`${tmp}/config.json`, JSON.stringify({ settings: { master_key: keyHex } }));
+  check("resolve arms missing mirror", resolveMasterKey(), keyHex);
+  check("resolve armed the mirror", readKeyring(), keyHex);
+  delete process.env.TOTP_VAULT_CONFIG;
   rmSync(tmp, { recursive: true, force: true });
 
   return results;

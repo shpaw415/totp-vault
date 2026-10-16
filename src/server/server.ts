@@ -9,7 +9,7 @@ import {
   loadStore,
   mergeAccounts,
   parseOtpauthUri,
-  readMasterKey,
+  resolveMasterKey,
   saveStore,
   type OtpAccount,
   type Store,
@@ -56,15 +56,19 @@ interface ViewState {
   configured: boolean;
   error: string | null;
   store: Store;
+  // The master key that actually decrypted the store (settings copy, healed
+  // from the local mirror when an update reset the settings). Saves must use
+  // this exact key — not a fresh settings read.
+  key: string | null;
 }
 
 function viewState(): ViewState {
-  const key = readMasterKey();
-  if (!key) return { configured: false, error: null, store: emptyStore() };
+  const key = resolveMasterKey();
+  if (!key) return { configured: false, error: null, store: emptyStore(), key: null };
   try {
-    return { configured: true, error: null, store: loadStore(key) };
+    return { configured: true, error: null, store: loadStore(key), key };
   } catch (e) {
-    return { configured: true, error: e instanceof Error ? e.message : String(e), store: emptyStore() };
+    return { configured: true, error: e instanceof Error ? e.message : String(e), store: emptyStore(), key };
   }
 }
 
@@ -196,7 +200,7 @@ const pageServer = Bun.serve({
           }
         }
         const summary = mergeAccounts(vs.store, parsed, failed);
-        if (summary.added.length) saveStore(vs.store, readMasterKey()!);
+        if (summary.added.length) saveStore(vs.store, vs.key!);
         return json(summary);
       } catch (e) {
         return fail(e);
@@ -231,7 +235,7 @@ const pageServer = Bun.serve({
             }
           }
           const summary = mergeAccounts(vs.store, parsed, failed);
-          if (summary.added.length) saveStore(vs.store, readMasterKey()!);
+          if (summary.added.length) saveStore(vs.store, vs.key!);
           if (!summary.added.length && !summary.duplicates.length && !summary.failed.length)
             return fail("no otpauth QR code found in the image");
           return json(summary);
@@ -257,7 +261,7 @@ const pageServer = Bun.serve({
           return json({ id: acc.id, issuer: acc.issuer, label: acc.label, secretB32: acc.secretB32, uri: accountToUri(acc) });
         if (req.method === "DELETE" && !action) {
           vs.store.accounts = vs.store.accounts.filter((a) => a.id !== acc.id);
-          saveStore(vs.store, readMasterKey()!);
+          saveStore(vs.store, vs.key!);
           return json({ removed: acc.id });
         }
         if (req.method === "POST" && action === "/rename") {
@@ -265,13 +269,13 @@ const pageServer = Bun.serve({
           const label = String(body.label ?? "").trim();
           if (!label) return fail("missing label");
           acc.label = label;
-          saveStore(vs.store, readMasterKey()!);
+          saveStore(vs.store, vs.key!);
           return json({ id: acc.id, label });
         }
         if (req.method === "POST" && action === "/next") {
           if (acc.type !== "hotp") return fail("not an HOTP account");
           acc.counter += 1;
-          saveStore(vs.store, readMasterKey()!);
+          saveStore(vs.store, vs.key!);
           return json(accountPublic(acc, Date.now()));
         }
         return fail("not found", 404);

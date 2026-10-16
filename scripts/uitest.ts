@@ -1,10 +1,31 @@
 // UI stress-test harness (happy-dom) for the TOTP Vault dashboard page.
-// Run against the live server: UI_PORT=4741 bun scripts/uitest.ts
-// Cleans the account store at the START and the END of the run.
+// Self-contained: spawns its OWN server instance on a scratch port with a
+// scratch data dir (TOTP_VAULT_DATA_DIR) and a scratch settings file
+// (TOTP_VAULT_CONFIG), so the "cleanup before/after" phases can never touch
+// the real vault or the real plugin settings. Optional: UI_PORT pins the
+// scratch port.
+import { randomBytes } from "node:crypto";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { Window } from "happy-dom";
 
-const PORT = process.env.UI_PORT ?? "4741";
+const PORT = Number(process.env.UI_PORT ?? 4793);
 const BASE = `http://127.0.0.1:${PORT}`;
+const SANDBOX = `/tmp/opencode/totp-uitest-${Date.now()}`;
+mkdirSync(SANDBOX, { recursive: true });
+const TEST_KEY = randomBytes(32).toString("hex");
+writeFileSync(`${SANDBOX}/config.json`, JSON.stringify({ settings: { master_key: TEST_KEY } }));
+
+const srv = Bun.spawn(["bun", "run", new URL("../src/server/server.ts", import.meta.url).pathname], {
+  env: {
+    ...process.env,
+    OPEN_BOT_PAGE_PORT: String(PORT),
+    OPEN_BOT_PAGE_TOKEN: "uitest-token",
+    TOTP_VAULT_DATA_DIR: `${SANDBOX}/data`,
+    TOTP_VAULT_CONFIG: `${SANDBOX}/config.json`,
+  },
+  stdout: "ignore",
+  stderr: "pipe",
+});
 let passed = 0;
 let failed = 0;
 const fails: string[] = [];
@@ -19,6 +40,27 @@ function check(name: string, ok: boolean, detail = ""): void {
   }
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+process.on("exit", () => {
+  srv.kill();
+  rmSync(SANDBOX, { recursive: true, force: true });
+});
+// wait for the scratch server to answer
+{
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    try {
+      const r = await fetch(`${BASE}/api/state`, { headers: { "x-open-bot-page-token": "uitest-token" } });
+      if (r.ok) break;
+    } catch {
+      // not up yet
+    }
+    if (Date.now() > deadline) {
+      console.error("scratch server did not come up:", await new Response(srv.stderr).text());
+      process.exit(1);
+    }
+    await sleep(300);
+  }
+}
 
 // The app script is inlined in the frozen (bundled) HTML. A local-install
 // dev server (import("./index.html") branch) serves it from the bun dev
@@ -50,7 +92,7 @@ async function freshWindow(): Promise<{ win: any; doc: any }> {
 }
 
 async function api(path: string, opts?: RequestInit): Promise<any> {
-  const r = await fetch(`${BASE}${path}`, opts);
+  const r = await fetch(`${BASE}${path}`, { ...opts, headers: { "x-open-bot-page-token": "uitest-token", ...(opts?.headers ?? {}) } });
   return r.json();
 }
 
