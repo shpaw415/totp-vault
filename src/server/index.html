@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TOTP Vault</title>
+<script>
+  // Theme: light is the default, dark via browser preference,
+  // overridable with ?theme=light|dark — the open-bot dashboard toggle drives this
+  // parameter on the proxied page. Set before CSS so there is no flash.
+  (function () {
+    var apply = function () {
+      var q = null;
+      try { q = new URLSearchParams(location.search).get("theme"); } catch (e) {}
+      var dark = q === "dark" || (q !== "light" && window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      if (dark) document.documentElement.setAttribute("data-theme", "dark");
+      else document.documentElement.removeAttribute("data-theme");
+    };
+    apply();
+    try {
+      var mq = window.matchMedia("(prefers-color-scheme: dark)");
+      if (mq.addEventListener) mq.addEventListener("change", function () { if (!new URLSearchParams(location.search).get("theme")) apply(); });
+    } catch (e) {}
+  })();
+</script>
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>🔐 <span data-i18n="title">TOTP Vault</span></h1>
+    <button class="btn primary" id="addBtn" data-i18n="add">+ Add</button>
+  </header>
+  <div id="notice"></div>
+  <input class="search" id="search" type="search" data-i18n-ph="search" placeholder="Filter…">
+  <div id="list"></div>
+  <div class="hint" id="updatedAt"></div>
+</div>
+
+<dialog id="addDlg">
+  <div class="dlg-head"><h2 data-i18n="addTitle">Add an account</h2><button class="dlg-close" id="addClose" title="Esc">×</button></div>
+  <div class="tabs">
+    <button class="btn small on" data-tab="qr" data-i18n="tabQr">QR image</button>
+    <button class="btn small" data-tab="uri" data-i18n="tabUri">URI</button>
+    <button class="btn small" data-tab="manual" data-i18n="tabManual">Manual</button>
+  </div>
+  <div id="tab-qr">
+    <div class="drop" id="drop">📷 <span data-i18n="dropText">Click or drop a screenshot of the QR code</span></div>
+    <input type="file" id="qrFile" accept="image/*" hidden>
+    <div class="hint" data-i18n="qrHint">Google Authenticator → Transfer accounts → Export accounts → select accounts → screenshot the QR (batch QRs welcome).</div>
+  </div>
+  <div id="tab-uri" hidden>
+    <label class="f" data-i18n="uriLabel">otpauth:// or otpauth-migration:// URI</label>
+    <textarea class="f" id="uriText" placeholder="otpauth://totp/…"></textarea>
+    <div class="actions"><button class="btn" id="uriCancel" data-i18n="cancel">Cancel</button><button class="btn primary" id="uriImport" data-i18n="import">Import</button></div>
+  </div>
+  <div id="tab-manual" hidden>
+    <div class="row">
+      <div><label class="f" data-i18n="fSecret">Secret (base32)</label><input class="f" id="mSecret" placeholder="JBSWY3DPEHPK3PXP"></div>
+      <div><label class="f" data-i18n="fLabel">Account</label><input class="f" id="mLabel"></div>
+    </div>
+    <div class="row">
+      <div><label class="f" data-i18n="fIssuer">Issuer (optional)</label><input class="f" id="mIssuer"></div>
+      <div><label class="f" data-i18n="fDigits">Digits</label><select class="f" id="mDigits"><option>6</option><option>8</option></select></div>
+    </div>
+    <div class="row">
+      <div><label class="f" data-i18n="fAlg">Algorithm</label><select class="f" id="mAlg"><option>SHA1</option><option>SHA256</option><option>SHA512</option></select></div>
+      <div><label class="f" data-i18n="fType">Type</label><select class="f" id="mType"><option value="totp">TOTP</option><option value="hotp">HOTP</option></select></div>
+    </div>
+    <div class="actions"><button class="btn" id="mCancel" data-i18n="cancel">Cancel</button><button class="btn primary" id="mImport" data-i18n="import">Import</button></div>
+  </div>
+  <div class="imp-result" id="impResult"></div>
+</dialog>
+
+<dialog id="secretDlg">
+  <h2 data-i18n="secretTitle">Account secret</h2>
+  <p data-i18n="secretWarn" style="color:var(--muted);font-size:13px">Keep this secret safe — anyone with it can generate your codes.</p>
+  <div class="secret-box" id="secretUri"></div>
+  <div class="secret-box" id="secretB32"></div>
+  <div class="actions">
+    <button class="btn" id="secretCopy" data-i18n="copySecret">Copy secret</button>
+    <button class="btn primary" id="secretClose" data-i18n="close">Close</button>
+  </div>
+</dialog>
+
+<div id="toast"></div>
+
+<script src="./app.ts"></script>
+</body>
+</html>

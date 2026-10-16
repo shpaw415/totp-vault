@@ -20,6 +20,21 @@ function check(name: string, ok: boolean, detail = ""): void {
 }
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// The app script is inlined in the frozen (bundled) HTML. A local-install
+// dev server (import("./index.html") branch) serves it from the bun dev
+// loader at /_bun/client/*.js instead — fetch it when nothing is inlined.
+async function appScriptOf(html: string): Promise<string> {
+  const inline = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)]
+    .map((m) => m[1])
+    .sort((a, b) => b.length - a.length)[0];
+  if (inline.includes("api/state")) return inline;
+  const src = html.match(/<script[^>]*src="([^"]+)"[^>]*>/)?.[1];
+  if (!src) throw new Error("no app script found in the served HTML");
+  const res = await fetch(`${BASE}${src}`);
+  if (!res.ok) throw new Error(`dev app script ${src} -> ${res.status}`);
+  return await res.text();
+}
+
 async function freshWindow(): Promise<{ win: any; doc: any }> {
   const html2 = await (await fetch(`${BASE}/`)).text();
   const w: any = new Window({ url: `${BASE}/` });
@@ -28,7 +43,7 @@ async function freshWindow(): Promise<{ win: any; doc: any }> {
   Object.defineProperty(w.navigator, "language", { value: "fr-CA", configurable: true });
   const rf = w.fetch.bind(w);
   w.fetch = (input: any, init?: any) => rf(typeof input === "string" && input.startsWith("api/") ? `${BASE}/${input}` : input, init);
-  const script = [...d.querySelectorAll("script")].map((s) => s.textContent!).sort((a, b) => b.length - a.length)[0];
+  const script = await appScriptOf(html2);
   new Function("window", "with(window){ " + script + " }")(w);
   await sleep(1500);
   return { win: w, doc: d };
@@ -66,8 +81,7 @@ const realFetch = win.fetch.bind(win);
 (win as any).prompt = () => "uitest-renamed";
 (win as any).clipboard = { writeText: async () => {} };
 
-const scripts = [...doc.querySelectorAll("script")].map((s) => s.textContent!);
-const appScript = scripts.sort((a, b) => b.length - a.length)[0];
+const appScript = await appScriptOf(html);
 try {
   new Function("window", "with(window){ " + appScript + " }")(win);
 } catch (e) {

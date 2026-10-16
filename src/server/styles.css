@@ -1,0 +1,63 @@
+/* TOTP Vault — dashboard page styles.
+   Light is the default (:root); dark overrides via html[data-theme="dark"],
+   driven by the head script in index.html (?theme= or prefers-color-scheme). */
+:root {
+  --bg: #f6f7f9; --card: #ffffff; --border: #d9dde3; --text: #1a1f27; --muted: #5b6472;
+  --accent: #2456c8; --accent-soft: #e8eefb; --danger: #b3261e; --danger-soft: #fbe9e7; --accent-contrast: #ffffff;
+  --ok: #1a7f37; --ring: #d9dde3; --ring-fg: #2456c8; --input-bg: #ffffff; --shadow: 0 1px 3px rgba(15,20,30,.08);
+}
+html[data-theme="dark"] {
+  --bg: #12161c; --card: #1a2029; --border: #2c3440; --text: #e8ecf1; --muted: #98a2b0;
+  --accent: #7ea4f0; --accent-soft: #21304d; --danger: #f28b82; --danger-soft: #3a2220; --accent-contrast: #10141b;
+  --ok: #6dd58c; --ring: #2c3440; --ring-fg: #7ea4f0; --input-bg: #12161c; --shadow: 0 1px 4px rgba(0,0,0,.4);
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+.wrap { max-width: 780px; margin: 0 auto; padding: 20px 16px 60px; }
+header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+header h1 { font-size: 20px; margin: 0; flex: 1; }
+.btn { border: 1px solid var(--border); background: var(--card); color: var(--text); border-radius: 8px; padding: 7px 14px; font-size: 14px; cursor: pointer; }
+.btn:hover { border-color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-contrast); }
+.btn.danger { color: var(--danger); border-color: var(--danger); }
+.btn.small { padding: 4px 9px; font-size: 13px; }
+.iconbtn { border: 1px solid transparent; background: none; color: var(--muted); cursor: pointer; font-size: 15px; border-radius: 6px; padding: 4px 7px; }
+.iconbtn:hover { color: var(--accent); background: var(--accent-soft); }
+.iconbtn.del:hover { color: var(--danger); background: var(--danger-soft); }
+.notice { background: var(--accent-soft); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; font-size: 14px; }
+.notice.error { background: var(--danger-soft); }
+.search { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); color: var(--text); font-size: 14px; margin-bottom: 14px; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; box-shadow: var(--shadow); padding: 14px 16px; display: flex; align-items: center; gap: 14px; margin-bottom: 10px; }
+.ringwrap { position: relative; width: 46px; height: 46px; flex: none; }
+.ringwrap svg { width: 46px; height: 46px; transform: rotate(-90deg); }
+.ringwrap .secs { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 11px; color: var(--muted); }
+.code { font: 700 26px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: 2px; min-width: 140px; cursor: pointer; }
+.code.hotp { cursor: default; }
+.who { flex: 1; min-width: 0; }
+.who .issuer { font-weight: 600; }
+.who .label { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.who .meta { color: var(--muted); font-size: 11px; margin-top: 2px; }
+.empty { text-align: center; padding: 46px 18px; color: var(--muted); }
+.empty .big { font-size: 40px; margin-bottom: 10px; }
+dialog { border: 1px solid var(--border); border-radius: 14px; background: var(--card); color: var(--text); padding: 20px; width: min(520px, 92vw); }
+dialog::backdrop { background: rgba(8,10,14,.55); }
+dialog h2 { margin: 0; font-size: 17px; }
+.dlg-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.dlg-close { border: none; background: none; color: var(--muted); font-size: 24px; line-height: 1; cursor: pointer; padding: 2px 9px; border-radius: 8px; }
+.dlg-close:hover { color: var(--accent); background: var(--accent-soft); }
+.tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+.tabs .btn.on { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+label.f { display: block; margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
+input.f, textarea.f, select.f { width: 100%; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); color: var(--text); font-size: 14px; }
+select.f option { background: var(--card); color: var(--text); }
+textarea.f { min-height: 74px; font-family: ui-monospace, monospace; }
+.row { display: flex; gap: 10px; } .row > * { flex: 1; }
+.drop { border: 2px dashed var(--border); border-radius: 10px; padding: 26px; text-align: center; color: var(--muted); cursor: pointer; }
+.drop:hover { border-color: var(--accent); color: var(--accent); }
+.actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.imp-result { margin-top: 12px; font-size: 13px; }
+.imp-result .ok { color: var(--ok); } .imp-result .dup { color: var(--muted); } .imp-result .err { color: var(--danger); }
+.secret-box { font-family: ui-monospace, monospace; background: var(--input-bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px; word-break: break-all; font-size: 13px; margin: 6px 0 12px; }
+#toast { position: fixed; bottom: 22px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 9px 18px; border-radius: 20px; font-size: 14px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 9; }
+#toast.show { opacity: 1; }
+.hint { color: var(--muted); font-size: 12px; margin-top: 10px; }

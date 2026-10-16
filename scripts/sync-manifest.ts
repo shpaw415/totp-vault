@@ -7,7 +7,7 @@ const manifest = {
   $schema: "/home/agent/.config/opencode/skills/plugin/open-bot.plugin.schema.json",
   id: "totp-vault",
   name: "TOTP Vault",
-  version: "0.2.2",
+  version: "0.2.3",
   description:
     "TOTP/2FA vault: import accounts from Google Authenticator's export QR (otpauth-migration decoded natively, batch QRs supported), generate codes on demand in chat, live codes with countdown in a dashboard tab. Secrets are AES-256-GCM encrypted at rest; the master key lives in the plugin vault. @totp composer mentions resolve code requests to the right account.",
   author: "shpaw415",
@@ -37,9 +37,12 @@ const manifest = {
   files: [
     { name: "lib.ts", source: "src/lib.ts" },
     { name: "server.ts", source: "src/server/server.ts", exec: true },
+    { name: "index.html", source: "src/server/index.html", exec: false },
+    { name: "app.ts", source: "src/server/app.ts", exec: false },
+    { name: "styles.css", source: "src/server/styles.css", exec: false },
   ],
   dashboard: {
-    pages: { entry: "server.ts" },
+    pages: { entry: "server.ts", ui: "src/server/index.html" },
     tabs: [{ id: "totp", title: "TOTP Vault", kind: "app", icon: "🔐" }],
     mentions: [{ section: "totp", label: "TOTP", path: "/mentions" }],
   },

@@ -1,8 +1,8 @@
 // WCAG contrast audit for both themes of the TOTP Vault page.
 // Extracts CSS variables from the :root (light) and html[data-theme="dark"] blocks
-// in src/server/server.ts and checks key foreground/background pairs (min 4.5:1).
+// in src/server/styles.css and checks key foreground/background pairs (min 4.5:1).
 // Run: bun scripts/contrast-check.ts
-const src = await Bun.file(new URL("../src/server/server.ts", import.meta.url)).text();
+const src = await Bun.file(new URL("../src/server/styles.css", import.meta.url)).text();
 
 function vars(block: string): Record<string, string> {
   const out: Record<string, string> = {};
@@ -10,8 +10,8 @@ function vars(block: string): Record<string, string> {
   return out;
 }
 
-const lightMatch = src.match(/:root\s*\{([\s\S]*?)\n  \}/);
-const darkMatch = src.match(/html\[data-theme=["']dark["']\]\s*\{([\s\S]*?)\n  \}/);
+const lightMatch = src.match(/:root\s*\{([\s\S]*?)\n\}/);
+const darkMatch = src.match(/html\[data-theme=["']dark["']\]\s*\{([\s\S]*?)\n\}/);
 if (!lightMatch || !darkMatch) {
   console.error("could not locate :root / dark blocks — check the selectors");
   process.exit(1);
