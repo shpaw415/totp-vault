@@ -446,7 +446,7 @@ export async function decodeQrImage(imagePath: string): Promise<string[]> {
   const code = await proc.exited;
   if (code === 4 || (!out.trim() && code !== 0)) {
     if (/zbarimg.*not found|No such file/i.test(err) && !Bun.which("zbarimg"))
-      throw new Error("zbarimg is not installed — the plugin setup should install zbar-tools (sudo apt-get install -y zbar-tools)");
+      throw new Error("zbarimg is not installed — reinstall the plugin (ob-plugin install --path or Plugins tab → Re-install) so its setup can install zbar-tools");
     throw new Error("no QR code found in the image");
   }
   if (code !== 0) throw new Error(`QR decoding failed: ${err.trim() || `exit ${code}`}`);

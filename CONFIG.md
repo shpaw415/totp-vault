@@ -2,7 +2,7 @@
 
 ## What this plugin needs
 
-1. **zbar-tools** — installed automatically by the plugin setup (`sudo apt-get install -y zbar-tools`, idempotent). It decodes QR screenshots (`zbarimg`).
+1. **zbar-tools** — installed automatically by the plugin setup (skipped when `zbarimg` is already present; otherwise `apt-get update` then `apt-get install -y zbar-tools`, idempotent). It decodes QR screenshots (`zbarimg`).
 2. **One secret setting: `master_key`** — a 32-byte hex key used to encrypt the account store (AES-256-GCM) at `/home/agent/.open-bot/pages-data/totp-vault/accounts.enc`.
 
 ## Ask → fill → verify

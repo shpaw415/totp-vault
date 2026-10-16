@@ -7,7 +7,7 @@ const manifest = {
   $schema: "/home/agent/.config/opencode/skills/plugin/open-bot.plugin.schema.json",
   id: "totp-vault",
   name: "TOTP Vault",
-  version: "0.2.3",
+  version: "0.2.4",
   description:
     "TOTP/2FA vault: import accounts from Google Authenticator's export QR (otpauth-migration decoded natively, batch QRs supported), generate codes on demand in chat, live codes with countdown in a dashboard tab. Secrets are AES-256-GCM encrypted at rest; the master key lives in the plugin vault. @totp composer mentions resolve code requests to the right account.",
   author: "shpaw415",
@@ -26,7 +26,12 @@ const manifest = {
     },
   ],
   setup: {
-    commands: ["sudo apt-get install -y zbar-tools"],
+    // Idempotent: skip when zbarimg is present; otherwise refresh apt lists
+    // first (a fresh desktop has no package index, so a bare install fails
+    // with "Unable to locate package zbar-tools").
+    commands: [
+      "sudo sh -c 'command -v zbarimg >/dev/null 2>&1 || { apt-get update -qq && apt-get install -y zbar-tools; }'",
+    ],
   },
   tools: [
     {
