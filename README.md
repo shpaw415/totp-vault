@@ -46,4 +46,4 @@ ob-plugin validate .
 ob-plugin install --path .
 ```
 
-MIT — Justin Hallé / M2Tech Solutions.
+MIT — totp-vault contributors.

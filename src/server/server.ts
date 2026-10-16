@@ -249,7 +249,7 @@ function pageHtml(): string {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TOTP Vault</title>
 <script>
-  // Theme: light is the default (Justin's rule), dark via browser preference,
+  // Theme: light is the default, dark via browser preference,
   // overridable with ?theme=light|dark — the open-bot dashboard toggle drives this
   // parameter on the proxied page. Set before CSS so there is no flash.
   (function () {
