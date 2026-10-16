@@ -18,10 +18,17 @@ import {
 const PORT = Number(process.env.OPEN_BOT_PAGE_PORT ?? 4740);
 const TOKEN = process.env.OPEN_BOT_PAGE_TOKEN ?? "";
 
-function authorized(req: Request): boolean {
+function authorized(
+  req: Request,
+  server: { requestIP(req: Request): { address: string } | null },
+): boolean {
   if (!TOKEN) return true;
   const h = req.headers.get("x-open-bot-page-token");
-  return !h || h === TOKEN;
+  if (h === TOKEN) return true;
+  // A missing header is only tolerated for loopback peers (local browser
+  // click-testing on 127.0.0.1) — never for other interfaces.
+  const ip = server.requestIP(req)?.address;
+  return ip === "127.0.0.1" || ip === "::1";
 }
 
 function json(data: unknown, status = 200): Response {
@@ -95,7 +102,7 @@ async function readBodyJson(req: Request): Promise<Record<string, unknown>> {
 
 Bun.serve({
   port: PORT,
-  async fetch(req): Promise<Response> {
+  async fetch(req, server): Promise<Response> {
     const url = new URL(req.url);
     const path = url.pathname.replace(/\/+$/, "") || "/";
 
