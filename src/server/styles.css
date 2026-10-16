@@ -24,6 +24,14 @@ header h1 { font-size: 20px; margin: 0; flex: 1; }
 .iconbtn { border: 1px solid transparent; background: none; color: var(--muted); cursor: pointer; font-size: 15px; border-radius: 6px; padding: 4px 7px; }
 .iconbtn:hover { color: var(--accent); background: var(--accent-soft); }
 .iconbtn.del:hover { color: var(--danger); background: var(--danger-soft); }
+/* Mobile/touch: kill the double-tap-zoom delay and grow tap targets */
+.btn, .iconbtn, .dlg-close, .tabs .btn { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+@media (pointer: coarse) {
+  .iconbtn { padding: 9px 12px; font-size: 17px; }
+  .btn { padding: 10px 16px; }
+  .btn.small { padding: 8px 12px; font-size: 14px; }
+  .dlg-close { padding: 6px 13px; }
+}
 .notice { background: var(--accent-soft); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; margin-bottom: 16px; font-size: 14px; }
 .notice.error { background: var(--danger-soft); }
 .search { width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--input-bg); color: var(--text); font-size: 14px; margin-bottom: 14px; }

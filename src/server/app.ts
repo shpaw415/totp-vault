@@ -119,9 +119,18 @@
       'stroke-dasharray="' + c + '" stroke-dashoffset="' + (c * (1 - frac)) + '"/></svg>';
   }
 
-  function render(): void {
+  // DOM is rebuilt ONLY when the account set changes. The old version rebuilt
+  // list.innerHTML every 500ms, which ate touch taps on mobile (node replaced
+  // between touchstart and click) and broke scroll momentum. Between rebuilds
+  // a light tick updates code text / secs / ring in place.
+  type CardRefs = { code: HTMLElement; secs: HTMLElement; circle: SVGCircleElement };
+  const cardRefs = new Map<string, CardRefs>();
+  let builtKey: string | null = null;
+
+  function buildCards(): void {
     const q = search.value.trim().toLowerCase();
     const shown = accounts.filter(a => !q || (a.issuer + " " + a.label).toLowerCase().includes(q));
+    cardRefs.clear();
     if (!accounts.length) {
       list.innerHTML = '<div class="empty"><div class="big">🔐</div><div><b>' + esc(t("empty")) + "</b></div><div>" + esc(t("emptyHint")) + "</div></div>";
       return;
@@ -130,6 +139,7 @@
     for (const a of shown) {
       const card = document.createElement("div");
       card.className = "card";
+      card.dataset.card = a.id;
       const secs = a.expiresAt ? Math.max(0, Math.ceil((a.expiresAt - Date.now()) / 1000)) : 0;
       card.innerHTML =
         '<div class="ringwrap">' + ring(secs, a.period) + '<div class="secs">' + (a.expiresAt ? secs + "s" : "·") + "</div></div>" +
@@ -143,6 +153,26 @@
         '<button class="iconbtn" data-reveal="' + a.id + '" title="' + esc(t("reveal")) + '">👁</button>' +
         '<button class="iconbtn del" data-del="' + a.id + '" title="' + esc(t("del")) + '">🗑</button>';
       list.appendChild(card);
+      cardRefs.set(a.id, {
+        code: card.querySelector(".code") as HTMLElement,
+        secs: card.querySelector(".secs") as HTMLElement,
+        circle: card.querySelectorAll("circle")[1] as SVGCircleElement,
+      });
+    }
+  }
+
+  function render(): void {
+    const key = search.value.trim().toLowerCase() + "|" +
+      accounts.map(a => [a.id, a.issuer, a.label, a.type, a.algorithm, a.digits, a.period].join("~")).join("|");
+    if (builtKey !== key) { builtKey = key; buildCards(); }
+    const c = 2 * Math.PI * 19;
+    for (const a of accounts) {
+      const r = cardRefs.get(a.id);
+      if (!r) continue;
+      r.code.textContent = fmt(a.code, a.digits);
+      const secs = a.expiresAt ? Math.max(0, Math.ceil((a.expiresAt - Date.now()) / 1000)) : 0;
+      r.secs.textContent = a.expiresAt ? secs + "s" : "·";
+      r.circle.setAttribute("stroke-dashoffset", String(c * (1 - Math.max(0, Math.min(1, secs / a.period)))));
     }
   }
   setInterval(render, 500);
