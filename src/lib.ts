@@ -496,9 +496,9 @@ export function selftest(): { name: string; ok: boolean; detail?: string }[] {
 
   // otpauth URI roundtrip
   const uri =
-    "otpauth://totp/GitHub:justin%40m2-tech.ca?secret=JBSWY3DPEHPK3PXP&issuer=GitHub&algorithm=SHA1&digits=6&period=30";
+    "otpauth://totp/GitHub:justin%40example.com?secret=JBSWY3DPEHPK3PXP&issuer=GitHub&algorithm=SHA1&digits=6&period=30";
   const parsedUri = parseOtpauthUri(uri);
-  check("otpauth label", parsedUri.label, "justin@m2-tech.ca");
+  check("otpauth label", parsedUri.label, "justin@example.com");
   check("otpauth issuer", parsedUri.issuer, "GitHub");
   check("otpauth secret", parsedUri.secretB32, "JBSWY3DPEHPK3PXP");
 
@@ -516,7 +516,7 @@ export function selftest(): { name: string; ok: boolean; detail?: string }[] {
     parts.push(Buffer.from([0x20, alg]), Buffer.from([0x28, digits]), Buffer.from([0x30, type]));
     return Buffer.concat(parts);
   };
-  const inner1 = otpParam(secret1, "justin@m2-tech.ca", "GitHub", 1, 1, 2);
+  const inner1 = otpParam(secret1, "justin@example.com", "GitHub", 1, 1, 2);
   const inner2 = otpParam(secret2, "acct2", "AWS", 2, 2, 2);
   const varint = (n: number): Buffer => {
     const out: number[] = [];
@@ -540,7 +540,7 @@ export function selftest(): { name: string; ok: boolean; detail?: string }[] {
   // accountToUri roundtrip
   const acc: OtpAccount = {
     id: "x",
-    label: "justin@m2-tech.ca",
+    label: "justin@example.com",
     issuer: "GitHub",
     secretB32: base32Encode(secret1),
     algorithm: "SHA1",
