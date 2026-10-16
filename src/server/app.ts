@@ -2,6 +2,17 @@
 // Logic moved verbatim from the former inline script in server.ts: same ids,
 // same i18n hooks (data-i18n / data-i18n-ph), same fetch paths (relative only).
 (() => {
+  // Surface any startup/runtime error in the page — a silent script failure
+  // looks exactly like "the button doesn't work" on a phone where there is no
+  // console. Registered FIRST so it catches boot-time exceptions too.
+  const fatal = (msg: unknown): void => {
+    const e = String(msg instanceof Error ? msg.message : msg);
+    const n = document.getElementById("notice");
+    if (n) n.innerHTML = '<div class="notice error">⚠️ ' + String(e).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] as string)) + "</div>";
+    try { console.error("[totp-vault]", e); } catch {}
+  };
+  window.addEventListener("error", (ev) => fatal(ev.message || ev.error || "script error"));
+  window.addEventListener("unhandledrejection", (ev) => fatal(ev.reason ?? "unhandled rejection"));
   const LANG = (navigator.language || "en").toLowerCase().startsWith("fr") ? "fr" : "en";
   const I18N: Record<string, Record<string, string>> = {
     en: {
@@ -66,6 +77,12 @@
   }
   const fmt = (code: string, digits: number): string => digits === 8 ? code.slice(0,4) + " " + code.slice(4) : code.slice(0,3) + " " + code.slice(3);
 
+  // showModal fallback: ancient mobile browsers without <dialog> support throw
+  // on showModal() — degrade to a plain open dialog instead of a dead button.
+  function openModal(d: HTMLDialogElement): void {
+    try { d.showModal(); } catch { d.setAttribute("open", ""); }
+  }
+
   // In-page confirm/prompt — window.confirm/prompt are silently blocked in the
   // dashboard's sandboxed iframe (no allow-modals), which made delete/rename no-ops.
   function ask(opts: { title: string; body?: string; input?: string }): Promise<string | null> {
@@ -81,7 +98,7 @@
       $("askOk").onclick = () => done(inp.hidden ? "ok" : (inp.value.trim() || null));
       $("askCancel").onclick = () => done(null);
       dlg.onclose = () => done(null);
-      dlg.showModal();
+      openModal(dlg);
       if (!inp.hidden) inp.select();
     });
   }
@@ -203,7 +220,7 @@
         $("secretUri").textContent = d.uri;
         $("secretB32").textContent = d.secretB32;
         $("secretCopy").onclick = async () => { try { await navigator.clipboard.writeText(d.secretB32); toast(t("copied")); } catch {} };
-        ($("secretDlg") as HTMLDialogElement).showModal();
+        openModal($("secretDlg") as HTMLDialogElement);
       } catch (e) { toast((e as Error).message); }
     } else if (el.dataset.next) {
       try { await api("api/accounts/" + id + "/next", { method: "POST" }); refresh(); } catch (e) { toast((e as Error).message); }
@@ -212,7 +229,7 @@
 
   // ---- add dialog ----
   const addDlg = $("addDlg") as HTMLDialogElement, impResult = $("impResult");
-  $("addBtn").onclick = () => { impResult.innerHTML = ""; addDlg.showModal(); };
+  $("addBtn").onclick = () => { impResult.innerHTML = ""; openModal(addDlg); };
   $("addClose").setAttribute("aria-label", LANG === "fr" ? "Fermer" : "Close");
   $("addClose").onclick = () => addDlg.close();
   document.querySelectorAll<HTMLButtonElement>("[data-tab]").forEach((b) => {

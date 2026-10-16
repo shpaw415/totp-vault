@@ -112,17 +112,39 @@ async function readBodyJson(req: Request): Promise<Record<string, unknown>> {
 // ---- server ----
 
 // The UI is bundled by the control plane at install (from dashboard.pages.ui)
-// and handed over via OPEN_BOT_PAGE_UI. Local checkouts / previews import the
-// HTML live instead — Bun bundles app.ts + styles.css on the fly (bun --hot).
-// Static value on purpose: the HTML import must be resolved before Bun.serve.
+// and handed over via OPEN_BOT_PAGE_UI. Local checkouts / previews build the
+// HTML here with Bun.build (same machinery as Bun.serve's html-import route)
+// so every response can carry cache-control: no-cache — a cached stale UI on a
+// phone kept serving dead buttons after every fix. Note: with our own build the
+// UI is frozen at server start (bun --hot no longer hot-reloads the UI; restart
+// the page server after UI edits). If the build ever fails we fall back to the
+// Bun.serve html-import special case (its own headers, always works).
+const HTML_HEADERS = { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" };
+async function checkoutUiRoutes(): Promise<Record<string, unknown> | null> {
+  try {
+    const built = await Bun.build({ entrypoints: [new URL("./index.html", import.meta.url).pathname] });
+    const routes: Record<string, unknown> = {};
+    for (const o of built.outputs) {
+      const text = await o.text();
+      const name = o.path.replace(/^.*\//, "");
+      const headers = o.path.endsWith(".html")
+        ? HTML_HEADERS
+        : { "content-type": o.type || "application/javascript", "cache-control": "no-cache" };
+      routes[name === "index.html" ? "/" : "/" + name] = (): Response => new Response(text, { headers });
+    }
+    return Object.keys(routes).length ? routes : null;
+  } catch {
+    return null;
+  }
+}
 const routes: Record<string, unknown> = process.env.OPEN_BOT_PAGE_UI
   ? {
       "/": (): Response =>
-        new Response(Bun.file(process.env.OPEN_BOT_PAGE_UI as string), {
-          headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" },
-        }),
+        new Response(Bun.file(process.env.OPEN_BOT_PAGE_UI as string), { headers: HTML_HEADERS }),
     }
-  : { "/": await import("./index.html").then((m) => m.default) };
+  : (await checkoutUiRoutes()) ?? {
+      "/": await import("./index.html").then((m) => m.default),
+    };
 
 const pageServer = Bun.serve({
   port: PORT,
