@@ -30,7 +30,7 @@ async function appScriptOf(html: string): Promise<string> {
   if (inline.includes("api/state")) return inline;
   const src = html.match(/<script[^>]*src="([^"]+)"[^>]*>/)?.[1];
   if (!src) throw new Error("no app script found in the served HTML");
-  const res = await fetch(`${BASE}${src}`);
+  const res = await fetch(`${BASE}/${src.replace(/^\.?\//, "")}`);
   if (!res.ok) throw new Error(`dev app script ${src} -> ${res.status}`);
   return await res.text();
 }
@@ -78,7 +78,7 @@ const realFetch = win.fetch.bind(win);
   return realFetch(url, init);
 };
 (win as any).confirm = () => true;
-(win as any).prompt = () => "uitest-renamed";
+(win as any).prompt = () => "uitest-renamed"; // legacy path only — v0.2.5+ uses the in-page askDlg
 (win as any).clipboard = { writeText: async () => {} };
 
 const appScript = await appScriptOf(html);
@@ -166,8 +166,13 @@ check("reveal shows the base32 secret", $("secretB32")!.textContent!.length >= 1
 ($("secretClose") as any).click();
 await sleep(100);
 
-// ---------- case 8: rename ----------
+// ---------- case 8: rename (v0.2.5+ real path: the in-page askDlg prompt) ----------
 (doc.querySelector("[data-rename]") as HTMLElement)!.dispatchEvent(new win.Event("click", { bubbles: true }));
+await sleep(300);
+const askInput = $("askInput") as any;
+check("rename dialog shows prefilled input", !askInput.hidden && askInput.value.length > 0, `hidden=${askInput.hidden} value="${askInput.value}"`);
+askInput.value = "uitest-renamed";
+($("askOk") as HTMLElement).click();
 await sleep(900);
 st = await api("/api/state");
 check("rename applied", st.accounts.some((a: any) => a.label === "uitest-renamed"), JSON.stringify(st.accounts.map((a: any) => a.label)));
@@ -222,15 +227,22 @@ for (let i = 0; i < 4 && afterHotp?.counter === before?.counter; i++) {
   lastToast = f.doc.getElementById("toast")?.textContent ?? "";
 }
 check("hotp counter advanced", afterHotp?.counter === (before?.counter ?? 0) + 1, `${before?.counter} -> ${afterHotp?.counter} toast="${lastToast}"`);
-const oathtool = Bun.spawnSync(["oathtool", "-c", String(afterHotp.counter), "-b", "JBSWY3DPEHPK3PXP"]).stdout.toString().trim();
-check("hotp code matches oathtool", afterHotp?.code === oathtool, `${afterHotp?.code} vs ${oathtool}`);
+const oathtoolPath = Bun.which("oathtool");
+if (oathtoolPath) {
+  const oathtool = Bun.spawnSync(["oathtool", "-c", String(afterHotp.counter), "-b", "JBSWY3DPEHPK3PXP"]).stdout.toString().trim();
+  check("hotp code matches oathtool", afterHotp?.code === oathtool, `${afterHotp?.code} vs ${oathtool}`);
+} else {
+  console.log("  SKIP hotp code matches oathtool (oathtool not installed)");
+}
 
-// ---------- case 11: delete ----------
+// ---------- case 11: delete (v0.2.5+ real path: the in-page askDlg confirm) ----------
 st = await api("/api/state");
 const countBefore = st.accounts.length;
 const delId = st.accounts.find((a: any) => a.issuer === "Stress").id;
 const delBtn = doc.querySelector(`[data-del="${delId}"]`) as HTMLElement;
 delBtn.dispatchEvent(new win.Event("click", { bubbles: true }));
+await sleep(300);
+($("askOk") as HTMLElement).click();
 await sleep(900);
 st = await api("/api/state");
 check("delete removes the account", st.accounts.length === countBefore - 1 && !st.accounts.some((a: any) => a.id === delId));

@@ -136,7 +136,7 @@ async function main(): Promise<void> {
     }
     const remain = expiresAt ? Math.max(0, Math.round((expiresAt - Date.now()) / 1000)) : null;
     if (asJson) console.log(JSON.stringify({ id: acc.id, issuer: acc.issuer, label: acc.label, code, remainingSeconds: remain, counter }, null, 2));
-    else console.log(remain === null ? `${code} (counter ${counter - 1})` : `${code} (valid ${remain}s)`);
+    else console.log(remain === null ? `${code} (counter ${counter})` : `${code} (valid ${remain}s)`);
     return;
   }
 
