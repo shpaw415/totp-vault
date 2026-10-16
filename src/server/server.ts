@@ -112,27 +112,32 @@ async function readBodyJson(req: Request): Promise<Record<string, unknown>> {
 // ---- server ----
 
 // The UI is bundled by the control plane at install (from dashboard.pages.ui)
-// and handed over via OPEN_BOT_PAGE_UI. Local checkouts / previews build the
-// HTML here with Bun.build (same machinery as Bun.serve's html-import route)
-// so every response can carry cache-control: no-cache — a cached stale UI on a
-// phone kept serving dead buttons after every fix. Note: with our own build the
-// UI is frozen at server start (bun --hot no longer hot-reloads the UI; restart
-// the page server after UI edits). If the build ever fails we fall back to the
-// Bun.serve html-import special case (its own headers, always works).
+// and handed over via OPEN_BOT_PAGE_UI as ONE self-contained HTML. Local
+// checkouts / previews build the same thing here (app.ts bundled for the
+// browser, CSS and JS inlined) so every response carries cache-control:
+// no-cache — a cached stale UI on a phone kept serving dead buttons after
+// every fix. v0.2.9: inline EVERYTHING into the document. Serving separate
+// chunk-*.css/js files (v0.2.7) broke the dashboard proxy path: the phone got
+// the HTML but the chunks 404'd — unstyled, dead page. Relative fetch("api/…")
+// is the only sub-path guarantee the proxy makes.
+// Note: with our own build the UI is frozen at server start (bun --hot no
+// longer hot-reloads the UI; restart the page server after UI edits). If the
+// build ever fails we fall back to the Bun.serve html-import special case
+// (also self-contained, its own headers, always works).
 const HTML_HEADERS = { "content-type": "text/html; charset=utf-8", "cache-control": "no-cache" };
 async function checkoutUiRoutes(): Promise<Record<string, unknown> | null> {
   try {
-    const built = await Bun.build({ entrypoints: [new URL("./index.html", import.meta.url).pathname] });
-    const routes: Record<string, unknown> = {};
-    for (const o of built.outputs) {
-      const text = await o.text();
-      const name = o.path.replace(/^.*\//, "");
-      const headers = o.path.endsWith(".html")
-        ? HTML_HEADERS
-        : { "content-type": o.type || "application/javascript", "cache-control": "no-cache" };
-      routes[name === "index.html" ? "/" : "/" + name] = (): Response => new Response(text, { headers });
-    }
-    return Object.keys(routes).length ? routes : null;
+    const [jsBuild, html, css] = await Promise.all([
+      Bun.build({ entrypoints: [new URL("./app.ts", import.meta.url).pathname], target: "browser" }),
+      Bun.file(new URL("./index.html", import.meta.url).pathname).text(),
+      Bun.file(new URL("./styles.css", import.meta.url).pathname).text(),
+    ]);
+    const js = (await jsBuild.outputs[0].text()).replace(/<\/script/gi, "<\\/script");
+    const inlined = html
+      .replace(/<link rel="stylesheet" href="\.?\/?styles\.css">/, () => `<style>\n${css}\n</style>`)
+      .replace(/<script src="\.?\/?app\.ts"><\/script>/, () => `<script type="module">\n${js}\n</script>`);
+    if (inlined === html) return null; // markers not found — fall back to html-import
+    return { "/": (): Response => new Response(inlined, { headers: HTML_HEADERS }) };
   } catch {
     return null;
   }
